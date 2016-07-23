@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans classpath:/spring-beans-3.0.xsd">
+
+  <bean id="propertyPlaceholderConfigurer" class="com.ibm.lbs.ldap.SpringPropertyPlaceholderConfigurer">
+    <!-- 系统属性总是优先, 即: JVM "-Dkey=value"方式设置的属性信息总是优先于在配置文件的设置. -->
+    <property name="systemPropertiesModeName" value="SYSTEM_PROPERTIES_MODE_OVERRIDE" />
+    <property name="ignoreResourceNotFound" value="true"></property>
+
+    <property name="locations">
+      <list>
+        <value>classpath:config.properties</value>
+        <value>file:${user.home.dir}/config.properties</value>
+      </list>
+    </property>
+  </bean>
+
+  <bean name="propertiesHolder" class="com.ibm.lbs.ldap.SpringPropertiesHolder">
+    <constructor-arg>
+      <ref bean="propertyPlaceholderConfigurer" />
+    </constructor-arg>
+  </bean>
+
+  <bean id="ldapContextSource"
+    class="org.springframework.ldap.core.support.LdapContextSource">
+    <property name="url" value="${LDAP.url}" />
+    <property name="userDn" value="${LDAP.user}" />
+    <property name="password" value="${LDAP.password}" />
+    <!-- 必须配置为false, 禁用此模式下的连接池机制才能使MutablePoolingContextSource的连接池控制起作用, 否则无法重新连接失效的连接 -->
+    <property name="pooled" value="false" />
+  </bean>
+
+<!--     class="org.springframework.ldap.pool.factory.MutablePoolingContextSource"> -->
+  <bean id="poolingContextSource"
+    class="com.ibm.lbs.ldap.MyMutablePoolingContextSource">
+    <property name="contextSource" ref="ldapContextSource" />
+    <!-- 不限制各个类型最大的连接数 -->
+    <property name="maxActive" value="-1" />
+    <!-- 不限制总的最大连接数 -->
+    <property name="maxTotal" value="-1" />
+    <!-- 释放达到的并保持的最大连接，即繁忙后释放连接时,保持的最大连接 -->
+    <property name="maxIdle" value="50" />
+    <!-- 创建时，建立空闲连接数的上限，即最小-->
+    <property name="minIdle" value="8" />
+    <!-- 当Pool中资源耗尽时, 缺省为无限等待, 为了防止对WAS线程造成长时间占用, 调整为一个固定时间. 应根据实际运行场景进行调整, -1时为无限等待 -->
+    <property name="maxWait" value="1000" />
+    <!-- 连接池中连接的验证器, 缺省查询单节点, 并只返回Objectclass属性 -->
+    <property name="dirContextValidator">
+      <bean class="org.springframework.ldap.pool.validation.DefaultDirContextValidator"></bean>
+    </property>
+    <!-- 三种检测方式, 一般不需要在租界前检测，也不要在归还时检测, 即使只打开一种方式, 也会对性能敏感的场合产生影响. 除非应用对性能不敏感 -->
+    <property name="testOnBorrow" value="false" />
+    <property name="testOnReturn" value="false" />
+    <!-- 推荐使用空闲检测的方式, 以指定的空闲时间检测连接, 失效的连接将被逐出 -->
+    <property name="testWhileIdle" value="true" />
+    <!-- 毫秒为单位的空闲逐出检测的间隔 -->
+    <property name="timeBetweenEvictionRunsMillis" value="10000" />
+    <!-- 每次做连接检测时, 检查的连接次数，例如10表示每次检测10个连接池中的连接 -->
+    <property name="numTestsPerEvictionRun" value="10"></property>
+  </bean>
+
+  <bean id="ldapTemplate" class="org.springframework.ldap.core.LdapTemplate">
+    <constructor-arg ref="poolingContextSource" />
+<!--     <constructor-arg ref="ldapContextSource" /> -->
+    <property name="ignorePartialResultException" value="true" />
+    <property name="ignoreNameNotFoundException" value="true" />
+  </bean>
+
+  <bean id="performanceMonitor" class="com.ibm.lbs.ldap.PerformanceMonitor">
+  </bean>
+
+  <bean id="loginModuleSpringLDAPComp" class="com.ibm.lbs.ldap.SpringLDAPComparationLoginModule">
+    <property name="ldapTemplate" ref="ldapTemplate"></property>
+    <property name="performanceMonitor" ref="performanceMonitor"></property>
+  </bean>
+
+  <bean id="loginModuleSpringLDAPBind" class="com.ibm.lbs.ldap.SpringLDAPBindLoginModule">
+    <property name="ldapTemplate" ref="ldapTemplate"></property>
+    <property name="performanceMonitor" ref="performanceMonitor"></property>
+  </bean>
+
+  <bean id="loginModuleSpringLDAPAuthen" class="com.ibm.lbs.ldap.SpringLDAPAuthenLoginModule">
+    <property name="ldapTemplate" ref="ldapTemplate"></property>
+    <property name="performanceMonitor" ref="performanceMonitor"></property>
+  </bean>
+
+  <bean id="loginModuleLDAPBind" class="com.ibm.lbs.ldap.LDAPBindLoginModule">
+    <property name="performanceMonitor" ref="performanceMonitor"></property>
+  </bean>
+</beans>
